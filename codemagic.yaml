@@ -38,10 +38,16 @@ workflows:
     scripts:
       # Codemagic's built-in "Set up code signing identities" step (run
       # automatically before this workflow, because of the ios_signing
-      # block above) already installs the certificate/profile into the
-      # keychain and matches them to the project - no manual keychain/
-      # xcode-project commands needed here, and running them again was
-      # redundant with (and possibly corrupting) that automatic step.
+      # block above) only *stages* the referenced certificate/profile files
+      # on disk - it does NOT add them to the keychain or match them to the
+      # Xcode project. That's what this script does, via codemagic-cli-tools;
+      # it's also what writes export_options.plist, which the final build
+      # step needs.
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          keychain add-certificates
+          xcode-project use-profiles
       - name: Show provisioning profile details
         script: |
           for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
