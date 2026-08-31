@@ -27,7 +27,12 @@ workflows:
         BUNDLE_ID: "com.hasnawi.mysheetapp"
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
-      flutter: stable
+      # Pinned to match the Flutter version that generated ios/, android/,
+      # project.pbxproj, and the Podfile. A newer "stable" silently
+      # "upgrades" those generated files mid-build (project.pbxproj,
+      # AppFrameworkInfo.plist, Podfile), which was resetting the manual
+      # code-signing setup and causing "no valid certificates found".
+      flutter: 3.44.1
       xcode: latest
       cocoapods: default
     scripts:
