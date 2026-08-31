@@ -45,9 +45,9 @@ workflows:
           sed -i '' "s/__GOOGLE_IOS_REVERSED_CLIENT_ID__/$GOOGLE_IOS_REVERSED_CLIENT_ID/" ios/Runner/Info.plist
       - name: Get Flutter packages
         script: flutter packages pub get
-      - name: Install CocoaPods dependencies
-        script: |
-          cd ios && pod install
+      # No separate "pod install" step: `flutter build ipa` generates
+      # ios/Flutter/Generated.xcconfig (which the Podfile requires) and runs
+      # CocoaPods itself, in the right order, as part of its build process.
       - name: Flutter build ipa
         script: |
           flutter build ipa --release \
