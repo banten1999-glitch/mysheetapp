@@ -1,0 +1,60 @@
+workflows:
+  ios-ipa:
+    name: Hasnawi Ledger - iOS IPA
+    max_build_duration: 60
+    instance_type: mac_mini_m2
+    integrations:
+      # Create this integration once in Codemagic: Team settings -> Integrations
+      # -> App Store Connect -> add your API key, name it "app_store_connect"
+      # (or update the name below to match what you called it).
+      app_store_connect: app_store_connect
+    environment:
+      ios_signing:
+        # ad_hoc lets you install the IPA directly on your own registered
+        # devices without going through App Store review. Switch to
+        # "app_store" once you're ready to submit to TestFlight/App Store.
+        distribution_type: ad_hoc
+        bundle_identifier: com.hasnawi.mysheetapp
+      vars:
+        BUNDLE_ID: "com.hasnawi.mysheetapp"
+        XCODE_WORKSPACE: "ios/Runner.xcworkspace"
+        XCODE_SCHEME: "Runner"
+        # Set these three as *encrypted* environment variables in the
+        # Codemagic UI (Environment variables tab) - never commit them here:
+        #   GOOGLE_SERVER_CLIENT_ID        Web OAuth client ID
+        #   GOOGLE_IOS_CLIENT_ID           iOS OAuth client ID
+        #   GOOGLE_IOS_REVERSED_CLIENT_ID  same client ID, segments reversed
+        # See README.md, "iOS / IPA" section, for how to obtain each one.
+      flutter: stable
+      xcode: latest
+      cocoapods: default
+    scripts:
+      - name: Set up code signing
+        script: |
+          keychain initialize
+          app-store-connect fetch-signing-files "$BUNDLE_ID" \
+            --type IOS_APP_ADHOC \
+            --create
+          keychain add-certificates
+          xcode-project use-profiles
+      - name: Inject Google Sign-In URL scheme into Info.plist
+        script: |
+          if [ -z "$GOOGLE_IOS_REVERSED_CLIENT_ID" ]; then
+            echo "GOOGLE_IOS_REVERSED_CLIENT_ID is not set - add it under Environment variables. See README.md."
+            exit 1
+          fi
+          sed -i '' "s/__GOOGLE_IOS_REVERSED_CLIENT_ID__/$GOOGLE_IOS_REVERSED_CLIENT_ID/" ios/Runner/Info.plist
+      - name: Get Flutter packages
+        script: flutter packages pub get
+      - name: Install CocoaPods dependencies
+        script: |
+          cd ios && pod install
+      - name: Flutter build ipa
+        script: |
+          flutter build ipa --release \
+            --export-options-plist=/Users/builder/export_options.plist \
+            --dart-define=GOOGLE_SERVER_CLIENT_ID="$GOOGLE_SERVER_CLIENT_ID" \
+            --dart-define=GOOGLE_IOS_CLIENT_ID="$GOOGLE_IOS_CLIENT_ID"
+    artifacts:
+      - build/ios/ipa/*.ipa
+      - /tmp/xcodebuild_logs/*.log
