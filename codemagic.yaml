@@ -36,11 +36,19 @@ workflows:
       xcode: latest
       cocoapods: default
     scripts:
-      - name: Set up code signing
+      # Codemagic's built-in "Set up code signing identities" step (run
+      # automatically before this workflow, because of the ios_signing
+      # block above) already installs the certificate/profile into the
+      # keychain and matches them to the project - no manual keychain/
+      # xcode-project commands needed here, and running them again was
+      # redundant with (and possibly corrupting) that automatic step.
+      - name: Show provisioning profile details
         script: |
-          keychain initialize
-          keychain add-certificates
-          xcode-project use-profiles
+          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
+            echo "== $f =="
+            security cms -D -i "$f" | plutil -convert xml1 -o - - | \
+              grep -A1 -E "application-identifier|<key>Name</key>|<key>TeamIdentifier</key>|<key>ProvisionsAllDevices</key>|<key>UUID</key>"
+          done
       - name: Inject Google Sign-In URL scheme into Info.plist
         script: |
           if [ -z "$GOOGLE_IOS_REVERSED_CLIENT_ID" ]; then
