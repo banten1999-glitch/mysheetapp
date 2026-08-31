@@ -27,14 +27,14 @@ workflows:
         BUNDLE_ID: "app.ursamajor6100.blackberry7572"
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
-      # Pinned to match the Flutter version that generated ios/, android/,
-      # project.pbxproj, and the Podfile. A newer "stable" silently
-      # "upgrades" those generated files mid-build (project.pbxproj,
-      # AppFrameworkInfo.plist, Podfile), which was resetting the manual
-      # code-signing setup and causing "no valid certificates found".
+      # Pinned to match the Flutter version that generated ios/ and
+      # project.pbxproj. A newer "stable" silently "upgrades" those
+      # generated files mid-build, which risks undoing project config.
       flutter: 3.44.1
       xcode: latest
-      cocoapods: default
+      # No `cocoapods:` entry - this project uses Swift Package Manager for
+      # all iOS plugins (see FlutterGeneratedPluginSwiftPackage in
+      # Runner.xcodeproj). It has no Podfile and needs none.
     scripts:
       # Codemagic's built-in "Set up code signing identities" step (run
       # automatically before this workflow, because of the ios_signing
@@ -48,13 +48,6 @@ workflows:
           keychain initialize
           keychain add-certificates
           xcode-project use-profiles
-      - name: Show provisioning profile details
-        script: |
-          for f in ~/Library/MobileDevice/Provisioning\ Profiles/*.mobileprovision; do
-            echo "== $f =="
-            security cms -D -i "$f" | plutil -convert xml1 -o - - | \
-              grep -A1 -E "application-identifier|<key>Name</key>|<key>TeamIdentifier</key>|<key>ProvisionsAllDevices</key>|<key>UUID</key>"
-          done
       - name: Inject Google Sign-In URL scheme into Info.plist
         script: |
           if [ -z "$GOOGLE_IOS_REVERSED_CLIENT_ID" ]; then
@@ -64,9 +57,6 @@ workflows:
           sed -i '' "s/__GOOGLE_IOS_REVERSED_CLIENT_ID__/$GOOGLE_IOS_REVERSED_CLIENT_ID/" ios/Runner/Info.plist
       - name: Get Flutter packages
         script: flutter packages pub get
-      # No separate "pod install" step: `flutter build ipa` generates
-      # ios/Flutter/Generated.xcconfig (which the Podfile requires) and runs
-      # CocoaPods itself, in the right order, as part of its build process.
       - name: Flutter build ipa
         script: |
           flutter build ipa --release \
