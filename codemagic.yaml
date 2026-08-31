@@ -24,7 +24,7 @@ workflows:
       groups:
         - google_config
       vars:
-        BUNDLE_ID: "com.hasnawi.mysheetapp"
+        BUNDLE_ID: "app.ursamajor6100.blackberry7572"
         XCODE_WORKSPACE: "ios/Runner.xcworkspace"
         XCODE_SCHEME: "Runner"
       # Pinned to match the Flutter version that generated ios/, android/,
