@@ -11,9 +11,9 @@ workflows:
       # account access or API key is needed with this method.
       ios_signing:
         provisioning_profiles:
-          - REPLACE_WITH_YOUR_PROFILE_NAME
+          - mysheetapp_profile
         certificates:
-          - REPLACE_WITH_YOUR_CERTIFICATE_NAME
+          - mysheetapp_cert
       # Create a group named "google_config" under Environment variables in
       # the Codemagic app settings, and add these three *secret* variables
       # to it (never commit their values here):
