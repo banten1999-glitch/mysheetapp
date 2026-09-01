@@ -208,20 +208,35 @@ class GoogleSheetsService {
     }
   }
 
-  /// Overwrites an existing row (1-based [rowNumber]) in place - used when
-  /// re-syncing an entry that already has a row (a retry, or an edit made
-  /// after the original sync).
+  /// Writes an entry into row [rowNumber], one cell per mapped field.
+  ///
+  /// Each mapped cell is written as its own range rather than blanking a
+  /// contiguous A..N block, so columns the app doesn't own - manual notes,
+  /// approval flags, formula columns such as a currency conversion - keep
+  /// their contents.
   Future<void> updateRow(int rowNumber, Map<String, Object?> valuesByField) async {
     try {
-      final row = SheetColumns.buildRow(
-        valuesByField: valuesByField,
-        columnLetters: _columnLetters,
-      );
-      await _api.spreadsheets.values.update(
-        sheets.ValueRange(values: [row]),
+      final data = <sheets.ValueRange>[];
+      for (final field in valuesByField.keys) {
+        final letter = _columnLetters[field];
+        if (letter == null || !SheetColumns.isValid(letter)) continue;
+        data.add(
+          sheets.ValueRange(
+            range: "'$_sheetName'!$letter$rowNumber",
+            values: [
+              [valuesByField[field] ?? ''],
+            ],
+          ),
+        );
+      }
+      if (data.isEmpty) return;
+
+      await _api.spreadsheets.values.batchUpdate(
+        sheets.BatchUpdateValuesRequest(
+          valueInputOption: 'USER_ENTERED',
+          data: data,
+        ),
         _spreadsheetId,
-        "'$_sheetName'!A$rowNumber:$_lastLetter$rowNumber",
-        valueInputOption: 'USER_ENTERED',
       );
     } catch (e) {
       throw SheetsException('فشل تحديث الصف في Google Sheets.\n($e)');

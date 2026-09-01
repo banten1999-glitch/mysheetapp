@@ -18,7 +18,6 @@ class AppConstants {
   static const Map<String, String> defaultColumnHeaders = <String, String>{
     'serial': 'الرديف',
     'date': 'التاريخ',
-    'time': 'الوقت',
     'statement': 'البيان',
     'receipt': 'رابط صورة الوصل',
     'note': 'النص أو الملاحظة',
@@ -33,7 +32,6 @@ class AppConstants {
   static const List<String> columnOrder = <String>[
     'serial',
     'date',
-    'time',
     'statement',
     'receipt',
     'note',
@@ -42,26 +40,32 @@ class AppConstants {
     'transactionId',
   ];
 
-  /// Which spreadsheet column each field is written to. Defaults to the
-  /// original fixed A..I layout, so existing sheets keep working untouched;
-  /// the user can remap any field from Settings -> "تعديل الخلايا".
+  /// Which spreadsheet column each field is written to, matching the
+  /// account-statement layout this app is used with:
+  /// B = دائن/عليه, D = مدين/له, E = ملاحظات, F = Receipt Pic,
+  /// G = البيان, H = التاريخ, I = رديف. Columns A and C are left alone
+  /// (only mapped cells are ever written), and the transaction id goes in
+  /// J, just past the visible table. Remappable from Settings.
   static const Map<String, String> defaultColumnLetters = <String, String>{
-    'serial': 'A',
-    'date': 'B',
-    'time': 'C',
-    'statement': 'D',
-    'receipt': 'E',
-    'note': 'F',
-    'debit': 'G',
-    'credit': 'H',
-    'transactionId': 'I',
+    'serial': 'I',
+    'date': 'H',
+    'statement': 'G',
+    'receipt': 'F',
+    'note': 'E',
+    'debit': 'D',
+    'credit': 'B',
+    'transactionId': 'J',
   };
+
+  /// Bumped whenever [defaultColumnLetters] changes shape in a way that
+  /// makes previously-saved mappings wrong; saved settings older than this
+  /// are replaced by the defaults once.
+  static const int columnMappingVersion = 2;
 
   /// Short, plain descriptions shown under each field on the mapping screen.
   static const Map<String, String> columnDescriptions = <String, String>{
     'serial': 'الرقم التسلسلي التلقائي للعملية',
     'date': 'تاريخ العملية',
-    'time': 'وقت تسجيل العملية',
     'statement': 'وصف العملية',
     'receipt': 'رابط صورة الوصل في Google Drive',
     'note': 'ملاحظة نصية بديلة عن الصورة',
@@ -82,5 +86,6 @@ class AppConstants {
   static const String prefsThemeMode = 'settings.themeMode';
   static const String prefsColumnHeaders = 'settings.columnHeaders';
   static const String prefsColumnLetters = 'settings.columnLetters';
+  static const String prefsColumnMappingVersion = 'settings.columnMappingVersion';
   static const String prefsAutoSync = 'settings.autoSync';
 }

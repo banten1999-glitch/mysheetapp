@@ -185,8 +185,6 @@ class EntryDetailScreen extends ConsumerWidget {
                     _DetailRow(label: 'البيان', value: entry.statement),
                     const Divider(height: 1),
                     _DetailRow(label: 'التاريخ', value: entry.date),
-                    const Divider(height: 1),
-                    _DetailRow(label: 'الوقت', value: entry.time),
                     if (entry.note != null) ...[
                       const Divider(height: 1),
                       _DetailRow(label: 'ملاحظة', value: entry.note!),

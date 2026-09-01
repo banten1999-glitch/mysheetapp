@@ -16,10 +16,16 @@ class SettingsService {
       prefs.getString(AppConstants.prefsColumnHeaders),
       AppConstants.defaultColumnHeaders,
     );
-    final letters = _decodeMap(
-      prefs.getString(AppConstants.prefsColumnLetters),
-      AppConstants.defaultColumnLetters,
-    );
+    // A saved mapping from before the current layout revision refers to
+    // fields/columns that no longer apply, so fall back to the defaults
+    // rather than merging stale entries forward.
+    final savedVersion = prefs.getInt(AppConstants.prefsColumnMappingVersion) ?? 1;
+    final letters = savedVersion < AppConstants.columnMappingVersion
+        ? AppConstants.defaultColumnLetters
+        : _decodeMap(
+            prefs.getString(AppConstants.prefsColumnLetters),
+            AppConstants.defaultColumnLetters,
+          );
 
     final themeIndex = prefs.getInt(AppConstants.prefsThemeMode) ?? ThemeMode.system.index;
 
@@ -68,6 +74,10 @@ class SettingsService {
     await prefs.setInt(AppConstants.prefsThemeMode, settings.themeMode.index);
     await prefs.setString(AppConstants.prefsColumnHeaders, jsonEncode(settings.columnHeaders));
     await prefs.setString(AppConstants.prefsColumnLetters, jsonEncode(settings.columnLetters));
+    await prefs.setInt(
+      AppConstants.prefsColumnMappingVersion,
+      AppConstants.columnMappingVersion,
+    );
     await prefs.setBool(AppConstants.prefsAutoSync, settings.autoSync);
   }
 }

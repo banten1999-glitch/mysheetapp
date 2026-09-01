@@ -139,7 +139,6 @@ class LedgerEntry {
   Map<String, Object?> toSheetValues() => <String, Object?>{
         'serial': serial,
         'date': date,
-        'time': time,
         'statement': statement,
         'receipt': receiptUrl ?? '',
         'note': note ?? '',
