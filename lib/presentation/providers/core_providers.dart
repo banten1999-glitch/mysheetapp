@@ -4,6 +4,7 @@ import '../../data/local/app_database.dart';
 import '../../data/local/transactions_dao.dart';
 import '../../data/repositories/ledger_repository.dart';
 import '../../data/services/connectivity_service.dart';
+import '../../data/services/exchange_rate_service.dart';
 import '../../data/services/google_auth_service.dart';
 import '../../data/services/settings_service.dart';
 
@@ -13,6 +14,9 @@ final connectivityServiceProvider =
     Provider<ConnectivityService>((ref) => ConnectivityService());
 
 final googleAuthServiceProvider = Provider<GoogleAuthService>((ref) => GoogleAuthService());
+
+final exchangeRateServiceProvider =
+    Provider<ExchangeRateService>((ref) => ExchangeRateService());
 
 final transactionsDaoProvider =
     Provider<TransactionsDao>((ref) => TransactionsDao(AppDatabase.instance));

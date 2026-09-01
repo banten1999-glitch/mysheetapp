@@ -13,6 +13,7 @@ import '../../widgets/amount_field.dart';
 import '../../widgets/app_background.dart';
 import '../../widgets/app_snackbar.dart';
 import '../../widgets/app_text_field.dart';
+import '../../widgets/balance_card.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/ms_logo.dart';
 import '../../widgets/primary_button.dart';
@@ -147,6 +148,21 @@ class _HomeScreenState extends ConsumerState<HomeScreen> {
                     color: AppColors.blue,
                     onTap: () => _open(const SettingsScreen()),
                   ),
+
+                // ── Balance ────────────────────────────────────────────
+                const BalanceCard(),
+                const SizedBox(height: 22),
+                Row(
+                  children: [
+                    const GradientIcon(
+                      icon: Icons.add_circle_outline_rounded,
+                      size: 30,
+                    ),
+                    const SizedBox(width: 10),
+                    Text('إضافة عملية جديدة', style: theme.textTheme.titleMedium),
+                  ],
+                ),
+                const SizedBox(height: 14),
 
                 // ── Operation details ──────────────────────────────────
                 GlassCard(

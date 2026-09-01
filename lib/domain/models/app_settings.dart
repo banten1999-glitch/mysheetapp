@@ -16,6 +16,8 @@ class AppSettings {
     this.columnHeaders = AppConstants.defaultColumnHeaders,
     this.columnLetters = AppConstants.defaultColumnLetters,
     this.autoSync = true,
+    this.usdRate = 0,
+    this.usdRateUpdatedAt,
   });
 
   final String spreadsheetId;
@@ -32,6 +34,12 @@ class AppSettings {
   /// Field key -> spreadsheet column letter ("A", "B", ... "AA").
   final Map<String, String> columnLetters;
   final bool autoSync;
+
+  /// How many EGP one USD buys. 0 means "not set yet".
+  final double usdRate;
+  final DateTime? usdRateUpdatedAt;
+
+  bool get hasUsdRate => usdRate > 0;
 
   bool get isSheetsConfigured => spreadsheetId.trim().isNotEmpty;
   bool get isDriveConfigured => driveFolderId.trim().isNotEmpty;
@@ -66,6 +74,8 @@ class AppSettings {
     Map<String, String>? columnHeaders,
     Map<String, String>? columnLetters,
     bool? autoSync,
+    double? usdRate,
+    DateTime? usdRateUpdatedAt,
   }) {
     return AppSettings(
       spreadsheetId: spreadsheetId ?? this.spreadsheetId,
@@ -80,6 +90,8 @@ class AppSettings {
       columnHeaders: columnHeaders ?? this.columnHeaders,
       columnLetters: columnLetters ?? this.columnLetters,
       autoSync: autoSync ?? this.autoSync,
+      usdRate: usdRate ?? this.usdRate,
+      usdRateUpdatedAt: usdRateUpdatedAt ?? this.usdRateUpdatedAt,
     );
   }
 }

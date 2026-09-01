@@ -88,4 +88,6 @@ class AppConstants {
   static const String prefsColumnLetters = 'settings.columnLetters';
   static const String prefsColumnMappingVersion = 'settings.columnMappingVersion';
   static const String prefsAutoSync = 'settings.autoSync';
+  static const String prefsUsdRate = 'settings.usdRate';
+  static const String prefsUsdRateUpdatedAt = 'settings.usdRateUpdatedAt';
 }

@@ -27,6 +27,10 @@ class DriveException extends AppException {
   const DriveException(super.message);
 }
 
+class ExchangeRateException extends AppException {
+  const ExchangeRateException(super.message);
+}
+
 class ValidationException extends AppException {
   const ValidationException(super.message);
 }

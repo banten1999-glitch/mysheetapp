@@ -5,6 +5,20 @@ import '../../core/constants/app_constants.dart';
 import '../../core/errors/app_exception.dart';
 import '../../core/utils/sheet_columns.dart';
 
+/// Credit/debit sums read back from the ledger rows of the sheet.
+class SheetTotals {
+  const SheetTotals({required this.credit, required this.debit});
+
+  /// مدين عليه - amounts received.
+  final double credit;
+
+  /// مدين له - amounts paid.
+  final double debit;
+
+  /// الباقي - positive means owed to the account holder.
+  double get remaining => credit - debit;
+}
+
 /// Talks to a single Google Sheet (spreadsheet + tab) configured by the
 /// user in Settings.
 ///
@@ -167,6 +181,49 @@ class GoogleSheetsService {
     } catch (e) {
       throw SheetsException('تعذّر تحديد موضع آخر عملية في الشيت.\n($e)');
     }
+  }
+
+  /// Sums the credit and debit columns across the ledger rows only.
+  ///
+  /// The range stops at the last entry row, so footer rows - including the
+  /// sheet's own totals cells, which live in those same columns - are never
+  /// counted twice. Values are read unformatted so currency formatting
+  /// ("£312") doesn't have to be parsed back out.
+  Future<SheetTotals> fetchTotals() async {
+    try {
+      final lastRow = await findLastEntryRow();
+      if (lastRow < 2) return const SheetTotals(credit: 0, debit: 0);
+
+      final credit = await _sumColumn(_letterFor('credit'), lastRow);
+      final debit = await _sumColumn(_letterFor('debit'), lastRow);
+      return SheetTotals(credit: credit, debit: debit);
+    } on SheetsException {
+      rethrow;
+    } catch (e) {
+      throw SheetsException('تعذّرت قراءة المجاميع من الشيت.\n($e)');
+    }
+  }
+
+  Future<double> _sumColumn(String letter, int lastRow) async {
+    final resp = await _api.spreadsheets.values.get(
+      _spreadsheetId,
+      "'$_sheetName'!${letter}2:$letter$lastRow",
+      valueRenderOption: 'UNFORMATTED_VALUE',
+    );
+    var total = 0.0;
+    for (final row in resp.values ?? const []) {
+      if (row.isEmpty) continue;
+      final cell = row.first;
+      if (cell is num) {
+        total += cell.toDouble();
+      } else {
+        final parsed = double.tryParse(
+          cell.toString().replaceAll(RegExp(r'[^0-9.\-]'), ''),
+        );
+        if (parsed != null) total += parsed;
+      }
+    }
+    return total;
   }
 
   /// Inserts a fresh blank row directly beneath the last ledger entry and

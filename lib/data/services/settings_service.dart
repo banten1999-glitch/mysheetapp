@@ -43,6 +43,11 @@ class SettingsService {
       columnHeaders: headers,
       columnLetters: letters,
       autoSync: prefs.getBool(AppConstants.prefsAutoSync) ?? true,
+      usdRate: prefs.getDouble(AppConstants.prefsUsdRate) ?? 0,
+      usdRateUpdatedAt: switch (prefs.getInt(AppConstants.prefsUsdRateUpdatedAt)) {
+        final int millis => DateTime.fromMillisecondsSinceEpoch(millis),
+        null => null,
+      },
     );
   }
 
@@ -79,5 +84,13 @@ class SettingsService {
       AppConstants.columnMappingVersion,
     );
     await prefs.setBool(AppConstants.prefsAutoSync, settings.autoSync);
+    await prefs.setDouble(AppConstants.prefsUsdRate, settings.usdRate);
+    final rateUpdatedAt = settings.usdRateUpdatedAt;
+    if (rateUpdatedAt != null) {
+      await prefs.setInt(
+        AppConstants.prefsUsdRateUpdatedAt,
+        rateUpdatedAt.millisecondsSinceEpoch,
+      );
+    }
   }
 }
