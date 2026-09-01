@@ -12,16 +12,14 @@ import '../../domain/models/app_settings.dart';
 class SettingsService {
   Future<AppSettings> load() async {
     final prefs = await SharedPreferences.getInstance();
-    Map<String, String> headers = AppConstants.defaultColumnHeaders;
-    final rawHeaders = prefs.getString(AppConstants.prefsColumnHeaders);
-    if (rawHeaders != null) {
-      try {
-        final decoded = jsonDecode(rawHeaders) as Map<String, dynamic>;
-        headers = decoded.map((k, v) => MapEntry(k, v.toString()));
-      } catch (_) {
-        headers = AppConstants.defaultColumnHeaders;
-      }
-    }
+    final headers = _decodeMap(
+      prefs.getString(AppConstants.prefsColumnHeaders),
+      AppConstants.defaultColumnHeaders,
+    );
+    final letters = _decodeMap(
+      prefs.getString(AppConstants.prefsColumnLetters),
+      AppConstants.defaultColumnLetters,
+    );
 
     final themeIndex = prefs.getInt(AppConstants.prefsThemeMode) ?? ThemeMode.system.index;
 
@@ -37,8 +35,24 @@ class SettingsService {
       appName: prefs.getString(AppConstants.prefsAppName) ?? AppConstants.defaultAppName,
       themeMode: ThemeMode.values[themeIndex.clamp(0, ThemeMode.values.length - 1)],
       columnHeaders: headers,
+      columnLetters: letters,
       autoSync: prefs.getBool(AppConstants.prefsAutoSync) ?? true,
     );
+  }
+
+  Map<String, String> _decodeMap(String? raw, Map<String, String> fallback) {
+    if (raw == null) return fallback;
+    try {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      // Merge over the defaults so a field added in a later app version
+      // still has a value when older saved settings are loaded.
+      return <String, String>{
+        ...fallback,
+        ...decoded.map((k, v) => MapEntry(k, v.toString())),
+      };
+    } catch (_) {
+      return fallback;
+    }
   }
 
   Future<void> save(AppSettings settings) async {
@@ -53,6 +67,7 @@ class SettingsService {
     await prefs.setString(AppConstants.prefsAppName, settings.appName);
     await prefs.setInt(AppConstants.prefsThemeMode, settings.themeMode.index);
     await prefs.setString(AppConstants.prefsColumnHeaders, jsonEncode(settings.columnHeaders));
+    await prefs.setString(AppConstants.prefsColumnLetters, jsonEncode(settings.columnLetters));
     await prefs.setBool(AppConstants.prefsAutoSync, settings.autoSync);
   }
 }

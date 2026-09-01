@@ -133,16 +133,18 @@ class LedgerEntry {
         pendingDeletion: (map['pending_delete'] as int? ?? 0) != 0,
       );
 
-  /// Row values in the fixed A..I column order for Google Sheets.
-  List<Object?> toSheetRow() => <Object?>[
-        serial,
-        date,
-        time,
-        statement,
-        receiptUrl ?? '',
-        note ?? '',
-        debitAmount ?? '',
-        creditAmount ?? '',
-        transactionId,
-      ];
+  /// Values keyed by field. The caller places each one at the spreadsheet
+  /// column the user mapped it to (see SheetColumns.buildRow), so the sheet
+  /// layout stays fully configurable.
+  Map<String, Object?> toSheetValues() => <String, Object?>{
+        'serial': serial,
+        'date': date,
+        'time': time,
+        'statement': statement,
+        'receipt': receiptUrl ?? '',
+        'note': note ?? '',
+        'debit': debitAmount ?? '',
+        'credit': creditAmount ?? '',
+        'transactionId': transactionId,
+      };
 }

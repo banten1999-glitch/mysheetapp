@@ -62,6 +62,7 @@ class LedgerRepository {
               client: client,
               spreadsheetId: settings.spreadsheetId,
               sheetName: settings.sheetName,
+              columnLetters: settings.effectiveColumnLetters,
             );
             final remoteMax = await sheets.getMaxSerial();
             client.close();
@@ -255,6 +256,7 @@ class LedgerRepository {
         client: client,
         spreadsheetId: settings.spreadsheetId,
         sheetName: settings.sheetName,
+        columnLetters: settings.effectiveColumnLetters,
       );
       final rowNumber = await sheets.findRowNumber(transactionId);
       if (rowNumber != null) {
@@ -394,6 +396,7 @@ class LedgerRepository {
           client: client,
           spreadsheetId: settings.spreadsheetId,
           sheetName: settings.sheetName,
+          columnLetters: settings.effectiveColumnLetters,
         );
 
         // Upsert by transactionId: if a row already exists (a retried sync
@@ -424,11 +427,11 @@ class LedgerRepository {
           }
         }
 
-        await sheets.ensureHeaderRow(settings.orderedHeaderLabels);
+        await sheets.ensureHeaderRow(settings.headerValuesByField);
         if (existingRow != null) {
-          await sheets.updateRow(existingRow, working.toSheetRow());
+          await sheets.updateRow(existingRow, working.toSheetValues());
         } else {
-          await sheets.appendRow(working.toSheetRow());
+          await sheets.appendRow(working.toSheetValues());
         }
 
         working = working.copyWith(syncStatus: SyncStatus.synced, clearErrorMessage: true);

@@ -3,11 +3,16 @@ import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import '../../../core/theme/app_colors.dart';
 import '../../../core/utils/formatters.dart';
 import '../../../domain/models/ledger_entry.dart';
 import '../../providers/ledger_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../widgets/amount_field.dart';
+import '../../widgets/app_background.dart';
+import '../../widgets/app_snackbar.dart';
+import '../../widgets/app_text_field.dart';
+import '../../widgets/glass_card.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/receipt_picker_card.dart';
 
@@ -36,10 +41,14 @@ class _EditEntryScreenState extends ConsumerState<EditEntryScreen> {
     _statementController = TextEditingController(text: entry.statement);
     _noteController = TextEditingController(text: entry.note ?? '');
     _debitController = TextEditingController(
-      text: entry.debitAmount != null && entry.debitAmount! > 0 ? entry.debitAmount!.toString() : '',
+      text: entry.debitAmount != null && entry.debitAmount! > 0
+          ? entry.debitAmount!.toString()
+          : '',
     );
     _creditController = TextEditingController(
-      text: entry.creditAmount != null && entry.creditAmount! > 0 ? entry.creditAmount!.toString() : '',
+      text: entry.creditAmount != null && entry.creditAmount! > 0
+          ? entry.creditAmount!.toString()
+          : '',
     );
     _selectedDate = DateTime.tryParse(entry.date) ?? DateTime.now();
   }
@@ -87,89 +96,116 @@ class _EditEntryScreenState extends ConsumerState<EditEntryScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final theme = Theme.of(context);
     final settings = ref.watch(settingsProvider);
     final isSubmitting = ref.watch(ledgerProvider.select((s) => s.isSubmitting));
 
     ref.listen(ledgerProvider, (previous, next) {
       if (next.lastError != null && next.lastError != previous?.lastError) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(next.lastError!), backgroundColor: Theme.of(context).colorScheme.error),
-        );
+        AppSnackbar.error(context, next.lastError!);
       }
     });
 
-    return Scaffold(
-      appBar: AppBar(title: Text('تعديل العملية رقم ${widget.entry.serial}')),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 32),
-        children: [
-          _FieldLabel('التاريخ'),
-          InkWell(
-            borderRadius: BorderRadius.circular(14),
-            onTap: _pickDate,
-            child: InputDecorator(
-              decoration: const InputDecoration(prefixIcon: Icon(Icons.calendar_today_outlined)),
-              child: Text(AppFormatters.date(_selectedDate)),
-            ),
+    return AppBackground(
+      child: Scaffold(
+        backgroundColor: Colors.transparent,
+        appBar: AppBar(title: Text('تعديل العملية #${widget.entry.serial}')),
+        body: SafeArea(
+          top: false,
+          child: ListView(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 32),
+            children: [
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AppTapField(
+                      label: 'التاريخ',
+                      value: AppFormatters.date(_selectedDate),
+                      icon: Icons.calendar_today_rounded,
+                      onTap: _pickDate,
+                      trailing: Icon(
+                        Icons.expand_more_rounded,
+                        size: 20,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    AppTextField(
+                      label: 'البيان',
+                      controller: _statementController,
+                      icon: Icons.description_rounded,
+                      minLines: 2,
+                      maxLines: 4,
+                      textDirection: TextDirection.rtl,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    AmountField(
+                      label: 'مدين له (مدفوع)',
+                      controller: _debitController,
+                      suffixText: settings.currency,
+                      accentColor: AppColors.debitColor(theme.brightness),
+                      icon: Icons.arrow_upward_rounded,
+                    ),
+                    const SizedBox(height: 16),
+                    AmountField(
+                      label: 'مدين عليه (مستلم)',
+                      controller: _creditController,
+                      suffixText: settings.currency,
+                      accentColor: AppColors.creditColor(theme.brightness),
+                      icon: Icons.arrow_downward_rounded,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 16),
+              GlassCard(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    ReceiptPickerCard(
+                      image: _newReceiptImage,
+                      existingRemoteUrl:
+                          _removeReceiptImage ? null : widget.entry.receiptUrl,
+                      onImagePicked: (f) => setState(() {
+                        _newReceiptImage = f;
+                        _removeReceiptImage = false;
+                      }),
+                      onImageRemoved: () => setState(() {
+                        _newReceiptImage = null;
+                        _removeReceiptImage = true;
+                      }),
+                    ),
+                    const SizedBox(height: 18),
+                    AppTextField(
+                      label: 'ملاحظة أو نص بديل',
+                      controller: _noteController,
+                      icon: Icons.sticky_note_2_rounded,
+                      minLines: 1,
+                      maxLines: 3,
+                      textDirection: TextDirection.rtl,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 26),
+              PrimaryButton(
+                label: 'حفظ التعديلات',
+                icon: Icons.save_rounded,
+                isLoading: isSubmitting,
+                onPressed: _submit,
+              ),
+            ],
           ),
-          const SizedBox(height: 16),
-          _FieldLabel('البيان'),
-          TextField(
-            controller: _statementController,
-            minLines: 2,
-            maxLines: 4,
-            textDirection: TextDirection.rtl,
-          ),
-          const SizedBox(height: 16),
-          _FieldLabel('صورة الوصل'),
-          ReceiptPickerCard(
-            image: _newReceiptImage,
-            existingRemoteUrl: _removeReceiptImage ? null : widget.entry.receiptUrl,
-            onImagePicked: (f) => setState(() {
-              _newReceiptImage = f;
-              _removeReceiptImage = false;
-            }),
-            onImageRemoved: () => setState(() {
-              _newReceiptImage = null;
-              _removeReceiptImage = true;
-            }),
-          ),
-          const SizedBox(height: 16),
-          _FieldLabel('إضافة ملاحظة أو نص'),
-          TextField(
-            controller: _noteController,
-            minLines: 1,
-            maxLines: 3,
-            textDirection: TextDirection.rtl,
-          ),
-          const SizedBox(height: 16),
-          _FieldLabel('مدين له'),
-          AmountField(label: 'المبلغ', controller: _debitController, suffixText: settings.currency),
-          const SizedBox(height: 16),
-          _FieldLabel('مدين عليه'),
-          AmountField(label: 'المبلغ', controller: _creditController, suffixText: settings.currency),
-          const SizedBox(height: 28),
-          PrimaryButton(
-            label: 'حفظ التعديلات',
-            icon: Icons.save_outlined,
-            isLoading: isSubmitting,
-            onPressed: _submit,
-          ),
-        ],
+        ),
       ),
-    );
-  }
-}
-
-class _FieldLabel extends StatelessWidget {
-  const _FieldLabel(this.text);
-  final String text;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 6),
-      child: Text(text, style: Theme.of(context).textTheme.labelLarge),
     );
   }
 }

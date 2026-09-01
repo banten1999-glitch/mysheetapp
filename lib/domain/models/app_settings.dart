@@ -14,6 +14,7 @@ class AppSettings {
     this.appName = AppConstants.defaultAppName,
     this.themeMode = ThemeMode.system,
     this.columnHeaders = AppConstants.defaultColumnHeaders,
+    this.columnLetters = AppConstants.defaultColumnLetters,
     this.autoSync = true,
   });
 
@@ -27,14 +28,30 @@ class AppSettings {
   final String appName;
   final ThemeMode themeMode;
   final Map<String, String> columnHeaders;
+
+  /// Field key -> spreadsheet column letter ("A", "B", ... "AA").
+  final Map<String, String> columnLetters;
   final bool autoSync;
 
   bool get isSheetsConfigured => spreadsheetId.trim().isNotEmpty;
   bool get isDriveConfigured => driveFolderId.trim().isNotEmpty;
   bool get isFullyConfigured => isSheetsConfigured && isDriveConfigured;
 
-  List<String> get orderedHeaderLabels =>
-      AppConstants.columnOrder.map((k) => columnHeaders[k] ?? AppConstants.defaultColumnHeaders[k]!).toList();
+  String headerLabel(String field) =>
+      columnHeaders[field] ?? AppConstants.defaultColumnHeaders[field] ?? field;
+
+  String columnLetter(String field) =>
+      columnLetters[field] ?? AppConstants.defaultColumnLetters[field] ?? 'A';
+
+  /// Header labels keyed by field, ready to be placed at mapped columns.
+  Map<String, Object?> get headerValuesByField => <String, Object?>{
+        for (final field in AppConstants.columnOrder) field: headerLabel(field),
+      };
+
+  /// Full mapping with any missing field filled in from the defaults.
+  Map<String, String> get effectiveColumnLetters => <String, String>{
+        for (final field in AppConstants.columnOrder) field: columnLetter(field),
+      };
 
   AppSettings copyWith({
     String? spreadsheetId,
@@ -47,6 +64,7 @@ class AppSettings {
     String? appName,
     ThemeMode? themeMode,
     Map<String, String>? columnHeaders,
+    Map<String, String>? columnLetters,
     bool? autoSync,
   }) {
     return AppSettings(
@@ -60,6 +78,7 @@ class AppSettings {
       appName: appName ?? this.appName,
       themeMode: themeMode ?? this.themeMode,
       columnHeaders: columnHeaders ?? this.columnHeaders,
+      columnLetters: columnLetters ?? this.columnLetters,
       autoSync: autoSync ?? this.autoSync,
     );
   }
