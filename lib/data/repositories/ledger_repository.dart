@@ -431,7 +431,7 @@ class LedgerRepository {
         if (existingRow != null) {
           await sheets.updateRow(existingRow, working.toSheetValues());
         } else {
-          await sheets.appendRow(working.toSheetValues());
+          await sheets.insertEntryRow(working.toSheetValues());
         }
 
         working = working.copyWith(syncStatus: SyncStatus.synced, clearErrorMessage: true);
