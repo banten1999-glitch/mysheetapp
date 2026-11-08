@@ -31,10 +31,10 @@ class GoogleSheetsService {
     required String spreadsheetId,
     required String sheetName,
     Map<String, String>? columnLetters,
-  })  : _api = sheets.SheetsApi(client),
-        _spreadsheetId = spreadsheetId,
-        _sheetName = sheetName,
-        _columnLetters = columnLetters ?? AppConstants.defaultColumnLetters;
+  }) : _api = sheets.SheetsApi(client),
+       _spreadsheetId = spreadsheetId,
+       _sheetName = sheetName,
+       _columnLetters = columnLetters ?? AppConstants.defaultColumnLetters;
 
   final sheets.SheetsApi _api;
   final String _spreadsheetId;
@@ -67,11 +67,13 @@ class GoogleSheetsService {
   String _letterFor(String field) =>
       _columnLetters[field] ?? AppConstants.defaultColumnLetters[field] ?? 'A';
 
-  String get _headerRowRange => "'$_sheetName'!A1:${_lastLetter}1";
+  String get _quotedSheet => _sheetName.replaceAll("'", "''");
+
+  String get _headerRowRange => "'$_quotedSheet'!A1:${_lastLetter}1";
 
   String _singleColumnRange(String field) {
     final letter = _letterFor(field);
-    return "'$_sheetName'!${letter}2:$letter";
+    return "'$_quotedSheet'!${letter}2:$letter";
   }
 
   Future<void> testConnection() async {
@@ -108,6 +110,94 @@ class GoogleSheetsService {
     } catch (e) {
       throw SheetsException('تعذّر كتابة صف العناوين في الشيت.\n($e)');
     }
+  }
+
+  /// Read the sheet itself, including manual rows without transaction IDs.
+  /// FORMULA preserves formulas in the snapshot; only changed cells are saved.
+  Future<List<SheetLedgerRow>> fetchEntries({int afterSerial = 150}) async {
+    final response = await _api.spreadsheets.values.get(
+      _spreadsheetId,
+      "'$_quotedSheet'!A2:$_lastLetter",
+      valueRenderOption: 'FORMULA',
+      dateTimeRenderOption: 'FORMATTED_STRING',
+    );
+    final result = <SheetLedgerRow>[];
+    for (final row in response.values ?? const <List<Object?>>[]) {
+      final values = <String, Object?>{};
+      for (final field in _columnLetters.keys) {
+        final index = SheetColumns.letterToIndex(_columnLetters[field]!);
+        values[field] = index != null && index < row.length ? row[index] : '';
+      }
+      final serial = SheetLedgerRow.parseSerial(values['serial']);
+      if (serial != null && serial > afterSerial) {
+        result.add(SheetLedgerRow(serial: serial, values: values));
+      }
+    }
+    result.sort((a, b) => a.serial.compareTo(b.serial));
+    return result;
+  }
+
+  /// Resolve the serial again immediately before saving: sheet row positions
+  /// can move. Refuse ambiguous serials and stale snapshots, never append.
+  Future<void> updateEntryBySerial(
+    SheetLedgerRow original,
+    Map<String, Object?> changes,
+  ) async {
+    const editable = {'date', 'statement', 'note', 'debit', 'credit'};
+    if (changes.keys.any((key) => !editable.contains(key))) {
+      throw const SheetsException('لا يمكن تعديل هذا الحقل.');
+    }
+    if (changes.isEmpty) return;
+    final response = await _api.spreadsheets.values.get(
+      _spreadsheetId,
+      "'$_quotedSheet'!A2:$_lastLetter",
+      valueRenderOption: 'FORMULA',
+      dateTimeRenderOption: 'FORMATTED_STRING',
+    );
+    final rows = response.values ?? const <List<Object?>>[];
+    final serialIndex = SheetColumns.letterToIndex(_letterFor('serial'))!;
+    final matches = <int>[];
+    for (var i = 0; i < rows.length; i++) {
+      if (serialIndex < rows[i].length &&
+          SheetLedgerRow.parseSerial(rows[i][serialIndex]) == original.serial) {
+        matches.add(i);
+      }
+    }
+    if (matches.length != 1) {
+      throw const SheetsException(
+        'الرديف مفقود أو مكرر في الشيت. راجع الشيت ثم حدّث القائمة.',
+      );
+    }
+    final row = rows[matches.single];
+    for (final field in original.values.keys) {
+      final index = SheetColumns.letterToIndex(_columnLetters[field]!);
+      final current = index != null && index < row.length ? row[index] : '';
+      if ((current ?? '').toString() !=
+          (original.values[field] ?? '').toString()) {
+        throw const SheetsException(
+          'تغيرت العملية في الشيت. حدّث القائمة قبل تعديلها.',
+        );
+      }
+    }
+    // RAW prevents a text note beginning with '=' from becoming a formula.
+    // Unchanged formula/receipt/ID cells are deliberately not included.
+    await _api.spreadsheets.values.batchUpdate(
+      sheets.BatchUpdateValuesRequest(
+        valueInputOption: 'RAW',
+        data: changes.entries
+            .map(
+              (entry) => sheets.ValueRange(
+                range:
+                    "'$_quotedSheet'!${_letterFor(entry.key)}${matches.single + 2}",
+                values: [
+                  [entry.value ?? ''],
+                ],
+              ),
+            )
+            .toList(),
+      ),
+      _spreadsheetId,
+    );
   }
 
   /// Highest serial number currently in the serial column (header excluded).
@@ -207,7 +297,7 @@ class GoogleSheetsService {
   Future<double> _sumColumn(String letter, int lastRow) async {
     final resp = await _api.spreadsheets.values.get(
       _spreadsheetId,
-      "'$_sheetName'!${letter}2:$letter$lastRow",
+      "'$_quotedSheet'!${letter}2:$letter$lastRow",
       valueRenderOption: 'UNFORMATTED_VALUE',
     );
     var total = 0.0;
@@ -239,21 +329,23 @@ class GoogleSheetsService {
       final targetRow = await findLastEntryRow() + 1;
 
       await _api.spreadsheets.batchUpdate(
-        sheets.BatchUpdateSpreadsheetRequest(requests: [
-          sheets.Request(
-            insertDimension: sheets.InsertDimensionRequest(
-              // startIndex is > 0 here (targetRow >= 2), which this flag
-              // requires, and it carries the data rows' styling down.
-              inheritFromBefore: true,
-              range: sheets.DimensionRange(
-                sheetId: sheetId,
-                dimension: 'ROWS',
-                startIndex: targetRow - 1,
-                endIndex: targetRow,
+        sheets.BatchUpdateSpreadsheetRequest(
+          requests: [
+            sheets.Request(
+              insertDimension: sheets.InsertDimensionRequest(
+                // startIndex is > 0 here (targetRow >= 2), which this flag
+                // requires, and it carries the data rows' styling down.
+                inheritFromBefore: true,
+                range: sheets.DimensionRange(
+                  sheetId: sheetId,
+                  dimension: 'ROWS',
+                  startIndex: targetRow - 1,
+                  endIndex: targetRow,
+                ),
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
         _spreadsheetId,
       );
 
@@ -271,7 +363,10 @@ class GoogleSheetsService {
   /// contiguous A..N block, so columns the app doesn't own - manual notes,
   /// approval flags, formula columns such as a currency conversion - keep
   /// their contents.
-  Future<void> updateRow(int rowNumber, Map<String, Object?> valuesByField) async {
+  Future<void> updateRow(
+    int rowNumber,
+    Map<String, Object?> valuesByField,
+  ) async {
     try {
       final data = <sheets.ValueRange>[];
       for (final field in valuesByField.keys) {
@@ -279,7 +374,7 @@ class GoogleSheetsService {
         if (letter == null || !SheetColumns.isValid(letter)) continue;
         data.add(
           sheets.ValueRange(
-            range: "'$_sheetName'!$letter$rowNumber",
+            range: "'$_quotedSheet'!$letter$rowNumber",
             values: [
               [valuesByField[field] ?? ''],
             ],
@@ -306,18 +401,20 @@ class GoogleSheetsService {
     try {
       final sheetId = await _resolveSheetId();
       await _api.spreadsheets.batchUpdate(
-        sheets.BatchUpdateSpreadsheetRequest(requests: [
-          sheets.Request(
-            deleteDimension: sheets.DeleteDimensionRequest(
-              range: sheets.DimensionRange(
-                sheetId: sheetId,
-                dimension: 'ROWS',
-                startIndex: rowNumber - 1,
-                endIndex: rowNumber,
+        sheets.BatchUpdateSpreadsheetRequest(
+          requests: [
+            sheets.Request(
+              deleteDimension: sheets.DeleteDimensionRequest(
+                range: sheets.DimensionRange(
+                  sheetId: sheetId,
+                  dimension: 'ROWS',
+                  startIndex: rowNumber - 1,
+                  endIndex: rowNumber,
+                ),
               ),
             ),
-          ),
-        ]),
+          ],
+        ),
         _spreadsheetId,
       );
     } on SheetsException {
@@ -325,5 +422,34 @@ class GoogleSheetsService {
     } catch (e) {
       throw SheetsException('فشل حذف الصف من Google Sheets.\n($e)');
     }
+  }
+}
+
+class SheetLedgerRow {
+  const SheetLedgerRow({required this.serial, required this.values});
+
+  final int serial;
+  final Map<String, Object?> values;
+
+  String text(String field) => (values[field] ?? '').toString();
+
+  static String normalizeDigits(String input) {
+    const arabic = '٠١٢٣٤٥٦٧٨٩';
+    const persian = '۰۱۲۳۴۵۶۷۸۹';
+    var result = input.trim();
+    for (var i = 0; i < 10; i++) {
+      result = result.replaceAll(arabic[i], '$i').replaceAll(persian[i], '$i');
+    }
+    return result;
+  }
+
+  static int? parseSerial(Object? value) {
+    final number = num.tryParse(normalizeDigits((value ?? '').toString()));
+    if (number == null ||
+        !number.isFinite ||
+        number < 0 ||
+        number != number.roundToDouble())
+      return null;
+    return number.toInt();
   }
 }

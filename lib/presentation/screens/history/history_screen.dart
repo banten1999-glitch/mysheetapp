@@ -12,6 +12,7 @@ import '../../widgets/app_snackbar.dart';
 import '../../widgets/glass_card.dart';
 import '../../widgets/sync_status_chip.dart';
 import 'entry_detail_screen.dart';
+import 'sheet_history_screen.dart';
 
 class HistoryScreen extends ConsumerWidget {
   const HistoryScreen({super.key});
@@ -40,6 +41,13 @@ class HistoryScreen extends ConsumerWidget {
         appBar: AppBar(
           title: const Text('سجل العمليات'),
           actions: [
+            IconButton(
+              tooltip: 'عمليات الشيت بعد الرديف 150',
+              icon: const Icon(Icons.table_view_rounded),
+              onPressed: () => Navigator.of(context).push(
+                MaterialPageRoute(builder: (_) => const SheetHistoryScreen()),
+              ),
+            ),
             IconButton(
               tooltip: 'مزامنة الآن',
               icon: state.isSyncing
