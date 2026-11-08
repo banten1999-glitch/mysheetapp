@@ -16,10 +16,23 @@ import '../../widgets/glass_card.dart';
 import '../../widgets/primary_button.dart';
 import '../../widgets/receipt_picker_card.dart';
 
+class EntryEditValues {
+  const EntryEditValues({required this.date, required this.statement, required this.note,
+    this.debit, this.credit, this.image, required this.removeImage});
+  final DateTime date;
+  final String statement;
+  final String note;
+  final double? debit;
+  final double? credit;
+  final File? image;
+  final bool removeImage;
+}
+
 class EditEntryScreen extends ConsumerStatefulWidget {
-  const EditEntryScreen({super.key, required this.entry});
+  const EditEntryScreen({super.key, required this.entry, this.onSave});
 
   final LedgerEntry entry;
+  final Future<void> Function(EntryEditValues values)? onSave;
 
   @override
   ConsumerState<EditEntryScreen> createState() => _EditEntryScreenState();
@@ -33,6 +46,7 @@ class _EditEntryScreenState extends ConsumerState<EditEntryScreen> {
   late DateTime _selectedDate;
   File? _newReceiptImage;
   bool _removeReceiptImage = false;
+  bool _remoteSubmitting = false;
 
   @override
   void initState() {
@@ -73,13 +87,37 @@ class _EditEntryScreenState extends ConsumerState<EditEntryScreen> {
   }
 
   Future<void> _submit() async {
+    if (_remoteSubmitting || ref.read(ledgerProvider).isSubmitting) return;
     FocusScope.of(context).unfocus();
     final debit = _debitController.text.trim().isEmpty
         ? null
-        : double.tryParse(_debitController.text.trim());
+        : AppFormatters.parseAmount(_debitController.text);
     final credit = _creditController.text.trim().isEmpty
         ? null
-        : double.tryParse(_creditController.text.trim());
+        : AppFormatters.parseAmount(_creditController.text);
+
+    if ((_debitController.text.trim().isNotEmpty && (debit == null || !debit.isFinite || debit < 0)) ||
+        (_creditController.text.trim().isNotEmpty && (credit == null || !credit.isFinite || credit < 0))) {
+      AppSnackbar.error(context, 'أدخل مبلغاً صحيحاً غير سالب.');
+      return;
+    }
+
+    if (widget.onSave != null) {
+      setState(() => _remoteSubmitting = true);
+      try {
+        await widget.onSave!(EntryEditValues(
+          date: _selectedDate, statement: _statementController.text,
+          note: _noteController.text, debit: debit, credit: credit,
+          image: _newReceiptImage, removeImage: _removeReceiptImage,
+        ));
+        if (mounted) Navigator.of(context).pop(true);
+      } catch (e) {
+        if (mounted) AppSnackbar.error(context, e.toString());
+      } finally {
+        if (mounted) setState(() => _remoteSubmitting = false);
+      }
+      return;
+    }
 
     final ok = await ref.read(ledgerProvider.notifier).updateEntry(
           original: widget.entry,
@@ -98,7 +136,7 @@ class _EditEntryScreenState extends ConsumerState<EditEntryScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final settings = ref.watch(settingsProvider);
-    final isSubmitting = ref.watch(ledgerProvider.select((s) => s.isSubmitting));
+    final isSubmitting = _remoteSubmitting || ref.watch(ledgerProvider.select((s) => s.isSubmitting));
 
     ref.listen(ledgerProvider, (previous, next) {
       if (next.lastError != null && next.lastError != previous?.lastError) {

@@ -1,4 +1,8 @@
 import 'package:googleapis/sheets/v4.dart' as sheets;
+import 'package:intl/intl.dart';
+import '../../domain/models/ledger_entry.dart';
+import '../../domain/models/sync_status.dart';
+import '../../core/utils/formatters.dart';
 import 'package:googleapis_auth/googleapis_auth.dart' as gapis;
 
 import '../../core/constants/app_constants.dart';
@@ -137,13 +141,31 @@ class GoogleSheetsService {
     return result;
   }
 
+  Future<LedgerEntry> entryForEditing(SheetLedgerRow original) async {
+    final response = await _api.spreadsheets.values.get(
+      _spreadsheetId, "'$_quotedSheet'!A2:$_lastLetter",
+      valueRenderOption: 'UNFORMATTED_VALUE', dateTimeRenderOption: 'SERIAL_NUMBER',
+    );
+    final matches = <Map<String, Object?>>[];
+    for (final row in response.values ?? const <List<Object?>>[]) {
+      final values = <String, Object?>{};
+      for (final field in _columnLetters.keys) {
+        final index = SheetColumns.letterToIndex(_columnLetters[field]!);
+        values[field] = index != null && index < row.length ? row[index] : '';
+      }
+      if (SheetLedgerRow.parseSerial(values['serial']) == original.serial) matches.add(values);
+    }
+    if (matches.length != 1) throw const SheetsException('الرديف مفقود أو مكرر. حدّث القائمة.');
+    return SheetLedgerRow.toEntry(original.serial, matches.single);
+  }
+
   /// Resolve the serial again immediately before saving: sheet row positions
   /// can move. Refuse ambiguous serials and stale snapshots, never append.
   Future<void> updateEntryBySerial(
     SheetLedgerRow original,
     Map<String, Object?> changes,
   ) async {
-    const editable = {'date', 'statement', 'note', 'debit', 'credit'};
+    const editable = {'date', 'statement', 'note', 'debit', 'credit', 'receipt'};
     if (changes.keys.any((key) => !editable.contains(key))) {
       throw const SheetsException('لا يمكن تعديل هذا الحقل.');
     }
@@ -432,6 +454,40 @@ class SheetLedgerRow {
   final Map<String, Object?> values;
 
   String text(String field) => (values[field] ?? '').toString();
+
+  static LedgerEntry toEntry(int serial, Map<String, Object?> values) {
+    String text(String key) => (values[key] ?? '').toString();
+    double? amount(String key) {
+      final value = normalizeDigits(text(key)).replaceAll(',', '').replaceAll('٬', '').replaceAll('٫', '.');
+      if (value.isEmpty) return null;
+      final parsed = double.tryParse(value);
+      if (parsed == null || !parsed.isFinite || parsed < 0) {
+        throw const SheetsException('تعذّر قراءة مبلغ العملية. راجع تنسيق المبالغ في الشيت.');
+      }
+      return parsed;
+    }
+    DateTime? date;
+    final rawDate = values['date'];
+    if (rawDate is num && rawDate.isFinite) {
+      date = DateTime(1899, 12, 30).add(Duration(days: rawDate.floor()));
+    } else {
+      final input = normalizeDigits(text('date'));
+      for (final pattern in ['yyyy-MM-dd', 'd/M/yyyy', 'd-M-yyyy', 'yyyy/M/d']) {
+        try { date = DateFormat(pattern).parseStrict(input); break; } catch (_) {}
+      }
+    }
+    if (date == null || date.year < 2000 || date.year > 2100) {
+      throw const SheetsException('تعذّر قراءة تاريخ العملية. استخدم تاريخاً صحيحاً في الشيت مثل 2026-11-08.');
+    }
+    return LedgerEntry(
+      transactionId: text('transactionId'), serial: serial,
+      date: AppFormatters.date(date), time: '', statement: text('statement'),
+      note: text('note').isEmpty ? null : text('note'),
+      receiptUrl: text('receipt').isEmpty ? null : text('receipt'),
+      debitAmount: amount('debit'), creditAmount: amount('credit'),
+      syncStatus: SyncStatus.synced, createdAt: date,
+    );
+  }
 
   static String normalizeDigits(String input) {
     const arabic = '٠١٢٣٤٥٦٧٨٩';

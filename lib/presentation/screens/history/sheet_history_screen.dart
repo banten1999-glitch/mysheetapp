@@ -7,7 +7,7 @@ import '../../../domain/models/app_settings.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/core_providers.dart';
 import '../../providers/settings_provider.dart';
-import 'entry_detail_screen.dart';
+import 'edit_entry_screen.dart';
 
 /// Online view of the actual sheet, independent of the device's local history.
 class SheetHistoryScreen extends ConsumerStatefulWidget {
@@ -103,45 +103,37 @@ class _SheetHistoryScreenState extends ConsumerState<SheetHistoryScreen> {
       if (row.text('transactionId').isNotEmpty &&
           entry.transactionId == row.text('transactionId')) {
         await Navigator.of(context).push(
-          MaterialPageRoute(builder: (_) => EntryDetailScreen(entry: entry)),
+          MaterialPageRoute(builder: (_) => EditEntryScreen(entry: entry)),
         );
         if (mounted) await _load();
         return;
       }
     }
-    final changes = await showDialog<Map<String, Object?>>(
-      context: context,
-      builder: (_) => _SheetEditDialog(
-        row: row,
-        allowBoth: ref.read(settingsProvider).allowBothAmounts,
-      ),
-    );
-    if (changes == null || changes.isEmpty || !mounted) return;
-    final settings = ref.read(settingsProvider);
-    if (!identical(settings, _loadedSettings) ||
-        ref.read(authProvider).account?.id != _loadedAccount) {
-      setState(() => _error = 'تغير الحساب أو الإعدادات. حدّث القائمة أولاً.');
-      return;
-    }
-    setState(() {
-      _loading = true;
-      _error = null;
-    });
-    try {
-      await _withSheet((sheet) => sheet.updateEntryBySerial(row, changes));
-      if (!mounted) return;
+    final entry = await _withSheet((sheet) => sheet.entryForEditing(row));
+    if (!mounted) return;
+    final saved = await Navigator.of(context).push<bool>(MaterialPageRoute(
+      builder: (_) => EditEntryScreen(entry: entry, onSave: (values) async {
+        final settings = ref.read(settingsProvider);
+        final account = ref.read(authProvider).account;
+        if (!identical(settings, _loadedSettings) || account?.id != _loadedAccount) {
+          throw const SheetsException('تغير الحساب أو الإعدادات. حدّث القائمة أولاً.');
+        }
+        await ref.read(ledgerRepositoryProvider).updateSheetEntry(
+          snapshot: row, original: entry, entryDate: values.date,
+          statement: values.statement, note: values.note,
+          debitAmount: values.debit, creditAmount: values.credit,
+          newReceiptImage: values.image, removeReceiptImage: values.removeImage,
+          settings: settings, account: account,
+        );
+      }),
+    ));
+    if (!mounted) return;
+    if (saved == true) {
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(
-          content: Text('تم تعديل الرديف ${row.serial} في Google Sheets.'),
-        ),
+        SnackBar(content: Text('تم تعديل الرديف ${row.serial} في Google Sheets.')),
       );
-    } catch (e) {
-      if (mounted) setState(() => _error = 'لم يتم حفظ التعديل: $e');
-      return;
-    } finally {
-      if (mounted) setState(() => _loading = false);
+      await _load();
     }
-    await _load();
   }
 
   @override
@@ -229,130 +221,4 @@ class _SheetHistoryScreenState extends ConsumerState<SheetHistoryScreen> {
       ),
     );
   }
-}
-
-class _SheetEditDialog extends StatefulWidget {
-  const _SheetEditDialog({required this.row, required this.allowBoth});
-  final SheetLedgerRow row;
-  final bool allowBoth;
-
-  @override
-  State<_SheetEditDialog> createState() => _SheetEditDialogState();
-}
-
-class _SheetEditDialogState extends State<_SheetEditDialog> {
-  static const labels = {
-    'date': 'التاريخ',
-    'statement': 'البيان',
-    'note': 'الملاحظة',
-    'debit': 'مدين له',
-    'credit': 'مدين عليه',
-  };
-  late final controllers = {
-    for (final field in labels.keys)
-      field: TextEditingController(text: widget.row.text(field)),
-  };
-  String? error;
-
-  @override
-  void dispose() {
-    for (final controller in controllers.values) {
-      controller.dispose();
-    }
-    super.dispose();
-  }
-
-  void save() {
-    final changes = <String, Object?>{};
-    for (final field in labels.keys) {
-      final value = controllers[field]!.text;
-      if (value == widget.row.text(field)) continue;
-      if (field == 'debit' || field == 'credit') {
-        final normalized = SheetLedgerRow.normalizeDigits(value)
-            .replaceAll(',', '')
-            .replaceAll('٬', '')
-            .replaceAll('٫', '.');
-        final number = double.tryParse(normalized);
-        if (value.trim().isNotEmpty &&
-            (number == null || !number.isFinite || number < 0)) {
-          setState(() => error = 'أدخل مبلغاً صحيحاً غير سالب.');
-          return;
-        }
-        changes[field] = number ?? '';
-      } else {
-        if ((field == 'statement' || field == 'date') && value.trim().isEmpty) {
-          setState(() => error = 'التاريخ والبيان مطلوبان.');
-          return;
-        }
-        changes[field] = value.trim();
-      }
-    }
-    if (changes.containsKey('debit') || changes.containsKey('credit')) {
-      double? amount(String field) => double.tryParse(
-        SheetLedgerRow.normalizeDigits(
-          (changes[field] ?? widget.row.text(field)).toString(),
-        ).replaceAll(',', '').replaceAll('٬', '').replaceAll('٫', '.'),
-      );
-      final debit = amount('debit');
-      final credit = amount('credit');
-      // Unknown formula values are retained and not treated as zero.
-      if (debit != null &&
-          credit != null &&
-          debit > 0 &&
-          credit > 0 &&
-          !widget.allowBoth) {
-        setState(() => error = 'لا يمكن إدخال المبلغين معاً حسب الإعدادات.');
-        return;
-      }
-      if ((debit ?? 0) <= 0 &&
-          (credit ?? 0) <= 0 &&
-          !controllers['debit']!.text.startsWith('=') &&
-          !controllers['credit']!.text.startsWith('=')) {
-        setState(() => error = 'أدخل مبلغاً أكبر من صفر في أحد الحقلين.');
-        return;
-      }
-    }
-    Navigator.of(context).pop(changes);
-  }
-
-  @override
-  Widget build(BuildContext context) => AlertDialog(
-    title: Text('تعديل الرديف ${widget.row.serial}'),
-    content: SizedBox(
-      width: 480,
-      child: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            for (final field in labels.keys)
-              Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: TextField(
-                  controller: controllers[field],
-                  readOnly: widget.row.text(field).startsWith('='),
-                  decoration: InputDecoration(
-                    labelText: labels[field],
-                    helperText: widget.row.text(field).startsWith('=')
-                        ? 'معادلة محفوظة — عدّلها من الشيت'
-                        : null,
-                  ),
-                ),
-              ),
-            if (error != null)
-              Text(
-                error!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-          ],
-        ),
-      ),
-    ),
-    actions: [
-      TextButton(
-        onPressed: () => Navigator.of(context).pop(),
-        child: const Text('إلغاء'),
-      ),
-      FilledButton(onPressed: save, child: const Text('حفظ في الشيت')),
-    ],
-  );
 }

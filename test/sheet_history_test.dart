@@ -25,6 +25,27 @@ void main() {
     columnLetters: mapping,
   );
 
+  test('adapts a manual row to the existing editor including receipt and dates', () {
+    final entry = SheetLedgerRow.toEntry(151, {
+      'date': '8/11/2026', 'statement': 'manual', 'note': 'note',
+      'debit': 25.5, 'credit': '', 'receipt': 'https://example.com/receipt.jpg',
+    });
+    expect(entry.date, '2026-11-08');
+    expect(entry.serial, 151);
+    expect(entry.note, 'note');
+    expect(entry.debitAmount, 25.5);
+    expect(entry.creditAmount, isNull);
+    expect(entry.receiptUrl, 'https://example.com/receipt.jpg');
+    expect(entry.transactionId, isEmpty);
+  });
+
+  test('supports sheet numeric dates and rejects unreadable dates or amounts', () {
+    final entry = SheetLedgerRow.toEntry(151, {'date': 46334, 'debit': 10});
+    expect(entry.date, '2026-11-08');
+    expect(() => SheetLedgerRow.toEntry(151, {'date': 'unknown', 'debit': 10}), throwsA(isA<SheetsException>()));
+    expect(() => SheetLedgerRow.toEntry(151, {'date': '2026-11-08', 'debit': '#VALUE!'}), throwsA(isA<SheetsException>()));
+  });
+
   test(
     'reads manual rows after 150 using mapped serial, not physical row',
     () async {
