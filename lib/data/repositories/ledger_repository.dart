@@ -198,6 +198,62 @@ class LedgerRepository {
     return (await _dao.getByTransactionId(updated.transactionId))!;
   }
 
+  /// Save a manually entered sheet row through the same form as local entries.
+  /// This online path never inserts a local record or appends a sheet row.
+  Future<void> updateSheetEntry({
+    required SheetLedgerRow snapshot, required LedgerEntry original,
+    required DateTime entryDate, required String statement, String? note,
+    double? debitAmount, double? creditAmount, File? newReceiptImage,
+    bool removeReceiptImage = false, required AppSettings settings,
+    required GoogleSignInAccount? account,
+  }) async {
+    _validate(statement: statement, debitAmount: debitAmount,
+      creditAmount: creditAmount, allowBoth: settings.allowBothAmounts);
+    if (account == null) throw const AuthException('يرجى تسجيل الدخول أولاً.');
+    if (!settings.isSheetsConfigured) throw const SettingsNotConfiguredException();
+    if (newReceiptImage != null && !settings.isDriveConfigured) {
+      throw const SettingsNotConfiguredException('حدد مجلد Google Drive لحفظ صورة الوصل.');
+    }
+    final changes = <String, Object?>{};
+    final candidates = <String, Object?>{
+      'date': AppFormatters.date(entryDate), 'statement': statement.trim(),
+      'note': (note ?? '').trim(), 'debit': debitAmount ?? '', 'credit': creditAmount ?? '',
+    };
+    final baseline = original.toSheetValues();
+    for (final field in candidates.keys) {
+      // The shared form displays zero amounts as empty; do not clear an
+      // unchanged zero-valued cell or formula just because of that display.
+      if ((field == 'debit' || field == 'credit') && candidates[field] == '' && baseline[field] == 0) continue;
+      if (candidates[field] != baseline[field]) changes[field] = candidates[field];
+    }
+    final client = await _authService.getAuthorizedClient(account);
+    final drive = GoogleDriveService(client: client);
+    String? uploadedId;
+    var writeStarted = false;
+    try {
+      if (newReceiptImage != null) {
+        final uploaded = await drive.uploadReceipt(file: newReceiptImage,
+          fileName: AppFormatters.receiptFileName(serial: original.serial, at: DateTime.now()),
+          folderId: settings.driveFolderId);
+        uploadedId = uploaded.fileId;
+        changes['receipt'] = uploaded.url;
+      } else if (removeReceiptImage) {
+        changes['receipt'] = '';
+      }
+      final sheets = GoogleSheetsService(client: client,
+        spreadsheetId: settings.spreadsheetId, sheetName: settings.sheetName,
+        columnLetters: settings.effectiveColumnLetters);
+      writeStarted = true;
+      await sheets.updateEntryBySerial(snapshot, changes);
+    } catch (_) {
+      // Never delete a possibly referenced upload after an ambiguous save.
+      if (uploadedId != null && !writeStarted) {
+        try { await drive.deleteFile(uploadedId); } catch (_) {}
+      }
+      rethrow;
+    } finally { client.close(); }
+  }
+
   /// Deletes [entry]. If it never reached the sheet (pending/failed), it's
   /// removed immediately, along with any not-yet-uploaded local image file.
   /// Otherwise it's hidden from the UI right away (soft delete) and the
